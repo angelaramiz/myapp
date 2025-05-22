@@ -27,6 +27,7 @@ class _ShareReceiverScreenState extends State<ShareReceiverScreen> {
   Folder? _selectedFolder;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isUrlValid = false;
 
   @override
   void initState() {
@@ -73,9 +74,11 @@ class _ShareReceiverScreenState extends State<ShareReceiverScreen> {
           } else {
             _titleController.text = 'Video de YouTube';
           }
+          _isUrlValid = true;
         });
       } else {
         _titleController.text = 'Video de YouTube';
+        _isUrlValid = true;
       }
     } else {
       // Para otras plataformas
@@ -101,6 +104,25 @@ class _ShareReceiverScreenState extends State<ShareReceiverScreen> {
             _titleController.text = 'Contenido compartido';
             break;
         }
+      }
+
+      // Lógica para obtener miniatura y título para otras plataformas
+      final otherPlatformInfo = await _urlService.getOtherPlatformInfo(url, platform);
+      if (otherPlatformInfo != null) {
+        setState(() {
+          _thumbnailUrl = otherPlatformInfo['thumbnailUrl'] ?? '';
+          _isUrlValid = true;
+
+          // Si hay un título disponible y el campo está vacío, lo completamos automáticamente
+          if (otherPlatformInfo['title']?.isNotEmpty == true &&
+              _titleController.text.isEmpty) {
+            _titleController.text = otherPlatformInfo['title'] ?? '';
+          }
+        });
+      } else {
+        setState(() {
+          _isUrlValid = true;
+        });
       }
     }
   }
@@ -360,7 +382,7 @@ class _ShareReceiverScreenState extends State<ShareReceiverScreen> {
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
-                        onPressed: _isSaving || _folders.isEmpty
+                        onPressed: _isSaving || _folders.isEmpty || !_isUrlValid
                             ? null
                             : _saveVideo,
                         child: _isSaving
@@ -381,5 +403,3 @@ class _ShareReceiverScreenState extends State<ShareReceiverScreen> {
     );
   }
 }
-
-// Fin de la clase
