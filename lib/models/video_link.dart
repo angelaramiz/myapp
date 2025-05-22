@@ -116,3 +116,57 @@ class VideoLink {
     }
   }
 }
+
+// Extensión para PlatformType
+extension PlatformTypeExtension on PlatformType {
+  IconData getIcon() {
+    switch (this) {
+      case PlatformType.youtube:
+        return Icons.youtube_searched_for;
+      case PlatformType.facebook:
+        return Icons.facebook;
+      case PlatformType.instagram:
+        return Icons.camera_alt;
+      case PlatformType.tiktok:
+        return Icons.music_note;
+      case PlatformType.twitter:
+        return Icons.campaign;
+      default:
+        return Icons.link;
+    }
+  }
+
+  Color getColor() {
+    switch (this) {
+      case PlatformType.youtube:
+        return Colors.red;
+      case PlatformType.facebook:
+        return Colors.blue;
+      case PlatformType.instagram:
+        return Colors.purple;
+      case PlatformType.tiktok:
+        return Colors.black;
+      case PlatformType.twitter:
+        return Colors.lightBlue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String getName() {
+    switch (this) {
+      case PlatformType.youtube:
+        return 'YouTube';
+      case PlatformType.facebook:
+        return 'Facebook';
+      case PlatformType.instagram:
+        return 'Instagram';
+      case PlatformType.tiktok:
+        return 'TikTok';
+      case PlatformType.twitter:
+        return 'Twitter';
+      default:
+        return 'Otro';
+    }
+  }
+}

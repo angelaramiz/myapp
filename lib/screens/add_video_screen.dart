@@ -68,21 +68,33 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
     final platform = _urlService.detectPlatform(url);
     setState(() {
       _selectedPlatform = platform;
-    });
-
-    // Si es YouTube, trata de obtener la miniatura
+    }); // Si es YouTube, trata de obtener la miniatura y el título
     if (platform == PlatformType.youtube) {
       final youtubeInfo = await _urlService.getYouTubeInfo(url);
       if (youtubeInfo != null) {
         setState(() {
           _thumbnailUrl = youtubeInfo['thumbnailUrl'] ?? '';
           _isUrlValid = true;
+
+          // Si hay un título disponible y el campo está vacío, lo completamos automáticamente
+          if (youtubeInfo['title']?.isNotEmpty == true &&
+              _titleController.text.isEmpty) {
+            _titleController.text = youtubeInfo['title'] ?? '';
+          }
         });
       }
     } else {
-      // Para otras plataformas, simplemente marcamos como válido
+      // Para otras plataformas
       setState(() {
         _isUrlValid = true;
+
+        // Intentar extraer un título de la URL si el campo está vacío
+        if (_titleController.text.isEmpty) {
+          final extractedTitle = _urlService.extractTitleFromUrl(url, platform);
+          if (extractedTitle != null) {
+            _titleController.text = extractedTitle;
+          }
+        }
       });
     }
 
