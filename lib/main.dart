@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'screens/folder_list_screen.dart';
-import 'services/notification_service.dart';
+import 'services/notification_service_simple.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializar el servicio de notificaciones
-  NotificationService.instance;
+  // Inicializar el servicio de notificaciones simplificado
+  await NotificationServiceSimple.instance.init();
 
   runApp(const MyApp());
 }

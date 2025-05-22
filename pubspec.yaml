@@ -39,14 +39,13 @@ dependencies:
   
   # UI
   url_launcher: ^6.2.4
-  
-  # Utilities
+    # Utilities
   uuid: ^4.3.3
   http: ^1.2.0
   
-  # Notifications
-  flutter_local_notifications: ^15.1.0+1
-  timezone: ^0.9.2
+  # Notifications (desactivadas por problemas de compatibilidad)
+  # flutter_local_notifications: ^15.1.0+1
+  # timezone: ^0.9.2
 
 dev_dependencies:
   flutter_test:

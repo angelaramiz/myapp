@@ -3,7 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models/video_link.dart';
 import '../services/data_service.dart';
 import '../services/url_service.dart';
-import '../services/notification_service.dart';
+import '../services/notification_service_simple.dart';
 
 class AddVideoScreen extends StatefulWidget {
   final String folderId;
@@ -151,11 +151,13 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
 
       // Guardar en almacenamiento local
       final dataService = DataService();
-      await dataService.saveVideoLink(videoLink);
-
-      // Si hay un recordatorio, programar notificación
+      await dataService.saveVideoLink(
+        videoLink,
+      ); // Si hay un recordatorio, programar notificación
       if (_selectedReminderDate != null) {
-        await NotificationService.instance.scheduleNotification(videoLink);
+        await NotificationServiceSimple.instance.scheduleNotification(
+          videoLink,
+        );
       }
 
       if (context.mounted) {

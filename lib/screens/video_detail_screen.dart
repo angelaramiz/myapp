@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/video_link.dart';
 import '../services/url_service.dart';
-import '../services/notification_service.dart';
+import '../services/notification_service_simple.dart';
 import 'add_video_screen.dart';
 
 class VideoDetailScreen extends StatelessWidget {
@@ -201,11 +201,9 @@ class VideoDetailScreen extends StatelessWidget {
                             ],
                           ),
                         );
-
                         if (confirmed == true) {
-                          await NotificationService.instance.cancelNotification(
-                            videoLink,
-                          );
+                          await NotificationServiceSimple.instance
+                              .cancelNotification(videoLink);
                           // La pantalla de edición sería la forma de actualizar el recordatorio
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
