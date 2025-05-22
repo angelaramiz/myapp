@@ -90,10 +90,9 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
       _isLoading = false;
     });
   }
-
   Future<void> _selectDate(BuildContext context) async {
     if (!context.mounted) return;
-
+    
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedReminderDate ?? DateTime.now(),
@@ -149,7 +148,7 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
             createdAt: DateTime.now(),
             reminder: _selectedReminderDate,
             folderId: widget.folderId,
-          ); // Guardar en almacenamiento local
+          );      // Guardar en almacenamiento local
       final dataService = DataService();
       await dataService.saveVideoLink(
         videoLink,
@@ -158,8 +157,7 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
         await NotificationServiceSimple.instance.scheduleNotification(
           videoLink,
         );
-      }
-      if (mounted) {
+      }      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -169,13 +167,14 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
             ),
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(currentContext);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      // Capturamos el error utilizando el contexto actual
+      final BuildContext? currentContext = mounted ? context : null;
+      if (currentContext != null) {
+        ScaffoldMessenger.of(currentContext)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) {

@@ -160,7 +160,7 @@ class VideoDetailScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
+                  color: const Color.fromRGBO(255, 165, 0, 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.orange),
                 ),
@@ -205,11 +205,13 @@ class VideoDetailScreen extends StatelessWidget {
                           await NotificationServiceSimple.instance
                               .cancelNotification(videoLink);
                           // La pantalla de edición sería la forma de actualizar el recordatorio
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Recordatorio eliminado'),
-                            ),
-                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Recordatorio eliminado'),
+                              ),
+                            );
+                          }
                         }
                       },
                     ),
@@ -228,9 +230,10 @@ class VideoDetailScreen extends StatelessWidget {
             label: const Text('Abrir Video'),
             style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(16)),
             onPressed: () async {
+              final BuildContext currentContext = context;
               final success = await _urlService.launchUrl(videoLink.url);
-              if (!success && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (!success && currentContext.mounted) {
+                ScaffoldMessenger.of(currentContext).showSnackBar(
                   const SnackBar(content: Text('No se pudo abrir la URL')),
                 );
               }

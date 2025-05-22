@@ -121,12 +121,11 @@ class _FolderListScreenState extends State<FolderListScreen> {
         ],
       ),
     );
-
     if (confirmed == true) {
       await _dataService.deleteFolder(folder.id);
       _refreshFolders();
 
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Carpeta "${folder.name}" eliminada')),
         );

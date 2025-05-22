@@ -50,12 +50,11 @@ class _FolderDetailScreenState extends State<FolderDetailScreen> {
         ],
       ),
     );
-
     if (confirmed == true) {
       await _dataService.deleteVideoLink(videoLink.id);
       _refreshVideoLinks();
 
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Video "${videoLink.title}" eliminado')),
         );
