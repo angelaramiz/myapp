@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/video_link.dart';
 import 'package:url_launcher/url_launcher.dart' as url_launcher;
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class UrlService {
   // Función para obtener información de una URL de YouTube
@@ -46,26 +45,36 @@ class UrlService {
   }
 
   // Función para obtener información de otras plataformas
-  Future<Map<String, String>?> getOtherPlatformInfo(String url, PlatformType platform) async {
+  Future<Map<String, String>?> getOtherPlatformInfo(
+    String url,
+    PlatformType platform,
+  ) async {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final document = response.body;
 
         // Extraer título
-        final titleRegExp = RegExp(r'<title>(.*?)<\/title>', caseSensitive: false);
+        final titleRegExp = RegExp(
+          r'<title>(.*?)<\/title>',
+          caseSensitive: false,
+        );
         final titleMatch = titleRegExp.firstMatch(document);
-        final title = titleMatch != null ? titleMatch.group(1) : 'Contenido compartido';
+        final title = titleMatch != null
+            ? titleMatch.group(1)
+            : 'Contenido compartido';
 
         // Extraer miniatura (simplificado)
-        final thumbnailRegExp = RegExp(r'<meta property="og:image" content="(.*?)"', caseSensitive: false);
+        final thumbnailRegExp = RegExp(
+          r'<meta property="og:image" content="(.*?)"',
+          caseSensitive: false,
+        );
         final thumbnailMatch = thumbnailRegExp.firstMatch(document);
-        final thumbnailUrl = thumbnailMatch != null ? thumbnailMatch.group(1) : '';
+        final thumbnailUrl = thumbnailMatch != null
+            ? thumbnailMatch.group(1)
+            : '';
 
-        return {
-          'title': title ?? '',
-          'thumbnailUrl': thumbnailUrl ?? '',
-        };
+        return {'title': title ?? '', 'thumbnailUrl': thumbnailUrl ?? ''};
       }
     } catch (e) {
       debugPrint('Error extracting info from other platform: $e');
