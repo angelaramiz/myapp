@@ -16,13 +16,16 @@ class UrlService {
       if (match != null && match.groupCount >= 1) {
         String videoId = match.group(1)!;
 
+        // Log para depuración
+        debugPrint('ID de video de YouTube extraído: $videoId');
+
         // Este es un enfoque simplificado. En una app real, deberías usar la API de YouTube
         // con una clave API apropiada para obtener esta información.
         final thumbnailUrl = 'https://img.youtube.com/vi/$videoId/0.jpg';
 
         // Intentar extraer el título del video usando petición HTTP para obtener el contenido
         String title = "";
-        
+
         // Primero, intentamos extraerlo de la URL si contiene el parámetro title
         RegExp titleRegExp = RegExp(r'(?:title=)([^&]+)');
         RegExpMatch? titleMatch = titleRegExp.firstMatch(url);
@@ -31,25 +34,57 @@ class UrlService {
           title = Uri.decodeComponent(
             titleMatch.group(1)!.replaceAll('+', ' '),
           );
+          debugPrint('Título extraído de la URL: $title');
         }
-        
+
         // Si no se encontró un título en la URL, intentamos obtenerlo desde el contenido de la página
         if (title.isEmpty) {
           try {
-            final response = await http.get(Uri.parse('https://www.youtube.com/watch?v=$videoId'));
+            debugPrint(
+              'Intentando obtener título desde contenido de la página...',
+            );
+
+            // Usamos un User-Agent para evitar bloqueos
+            final headers = {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36',
+            };
+
+            final response = await http.get(
+              Uri.parse('https://www.youtube.com/watch?v=$videoId'),
+              headers: headers,
+            );
+
             if (response.statusCode == 200) {
               // Extraer el título de la etiqueta <title>
               final htmlContent = response.body;
-              final titleRegExp = RegExp(r'<title>(.*?)<\/title>', caseSensitive: false);
+              debugPrint(
+                'Respuesta recibida con éxito, longitud: ${htmlContent.length}',
+              );
+
+              final titleRegExp = RegExp(
+                r'<title>(.*?)<\/title>',
+                caseSensitive: false,
+              );
               final titleMatch = titleRegExp.firstMatch(htmlContent);
               if (titleMatch != null && titleMatch.groupCount >= 1) {
                 String extractedTitle = titleMatch.group(1) ?? '';
+                debugPrint('Título extraído del HTML: $extractedTitle');
+
                 // Limpiar el título (YouTube generalmente añade " - YouTube" al final)
                 if (extractedTitle.endsWith(' - YouTube')) {
-                  extractedTitle = extractedTitle.substring(0, extractedTitle.length - 10);
+                  extractedTitle = extractedTitle.substring(
+                    0,
+                    extractedTitle.length - 10,
+                  );
                 }
                 title = extractedTitle.trim();
+                debugPrint('Título limpio: $title');
               }
+            } else {
+              debugPrint(
+                'Error al obtener contenido: Código ${response.statusCode}',
+              );
             }
           } catch (e) {
             debugPrint('Error obteniendo título desde contenido: $e');
@@ -73,10 +108,20 @@ class UrlService {
     String url,
     PlatformType platform,
   ) async {
+    debugPrint('Obteniendo información para URL: $url, plataforma: $platform');
     try {
-      final response = await http.get(Uri.parse(url));
+      // Usamos un User-Agent para evitar bloqueos
+      final headers = {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36',
+      };
+
+      final response = await http.get(Uri.parse(url), headers: headers);
       if (response.statusCode == 200) {
         final document = response.body;
+        debugPrint(
+          'Respuesta recibida con éxito, longitud: ${document.length}',
+        );
 
         // Extraer título
         final titleRegExp = RegExp(
@@ -87,6 +132,8 @@ class UrlService {
         final title = titleMatch != null
             ? titleMatch.group(1)
             : 'Contenido compartido';
+
+        debugPrint('Título extraído: $title');
 
         // Extraer miniatura (simplificado)
         final thumbnailRegExp = RegExp(
@@ -134,54 +181,127 @@ class UrlService {
 
   // Intenta extraer un título de la URL dependiendo de la plataforma
   String? extractTitleFromUrl(String url, PlatformType platform) {
+    debugPrint(
+      'Intentando extraer título de URL: $url (Plataforma: $platform)',
+    );
     try {
       // Extrae el título de diferentes formas según la plataforma
       switch (platform) {
         case PlatformType.youtube:
-          // Ya se maneja en getYouTubeInfo
-          return null;
-
-        case PlatformType.facebook:
-          // Tratar de extraer el título del segmento de la ruta
-          final uri = Uri.parse(url);
-          final pathSegments = uri.pathSegments;
-          if (pathSegments.isNotEmpty && pathSegments.contains('posts')) {
-            int index = pathSegments.indexOf('posts');
-            if (index > 0) {
-              return "Video de ${pathSegments[index - 1].replaceAll('.', ' ')}";
+          // Ya se maneja en getYouTubeInfo, pero intentamos extraer un título básico
+          final regExp = RegExp(
+            r'(?:youtube\.com\/(?:.*v=|.*vi=|watch\/)|(youtu\.be\/))([^&?#]+)',
+          );
+          final match = regExp.firstMatch(url);
+          if (match != null && match.groupCount >= 1) {
+            String videoId = match.group(2) ?? match.group(1) ?? '';
+            if (videoId.isNotEmpty) {
+              debugPrint('ID de video encontrado en URL: $videoId');
+              return "Video de YouTube";
             }
           }
           return null;
 
+        case PlatformType.facebook:
+          // Tratar de extraer el título del segmento de la ruta
+          debugPrint('Extrayendo título de Facebook URL');
+          final uri = Uri.parse(url);
+          final pathSegments = uri.pathSegments;
+          if (pathSegments.isNotEmpty) {
+            if (pathSegments.contains('posts')) {
+              int index = pathSegments.indexOf('posts');
+              if (index > 0) {
+                String username = pathSegments[index - 1].replaceAll('.', ' ');
+                debugPrint('Nombre de usuario extraído de Facebook: $username');
+                return "Video de $username";
+              }
+            } else if (pathSegments.isNotEmpty) {
+              // Si no encontramos 'posts', intentamos usar el primer segmento útil
+              for (final segment in pathSegments) {
+                if (segment.isNotEmpty &&
+                    segment != 'watch' &&
+                    segment != 'video' &&
+                    !segment.contains('.php')) {
+                  debugPrint('Segmento útil encontrado: $segment');
+                  return "Contenido de Facebook: $segment";
+                }
+              }
+            }
+          }
+          return "Video de Facebook";
         case PlatformType.instagram:
+          debugPrint('Extrayendo título de Instagram URL');
           // Intentar extraer username
-          final regExp = RegExp(r'instagram\.com\/([^\/]+)');
+          final regExp = RegExp(r'instagram\.com\/(?:p\/|reel\/)?([^\/\?]+)');
           final match = regExp.firstMatch(url);
           if (match != null && match.groupCount >= 1) {
-            return "Post de ${match.group(1)}";
+            final username = match.group(1);
+            debugPrint('Usuario de Instagram encontrado: $username');
+            if (url.contains('/p/') || url.contains('/reel/')) {
+              return "Post de Instagram";
+            }
+            return "Post de @$username";
           }
-          return null;
+          return "Contenido de Instagram";
 
         case PlatformType.tiktok:
+          debugPrint('Extrayendo título de TikTok URL');
           // Intentar extraer username
-          final regExp = RegExp(r'tiktok\.com\/@([^\/]+)');
+          final regExp = RegExp(r'tiktok\.com\/@([^\/\?]+)');
           final match = regExp.firstMatch(url);
           if (match != null && match.groupCount >= 1) {
-            return "Video de ${match.group(1)}";
+            final username = match.group(1);
+            debugPrint('Usuario de TikTok encontrado: $username');
+            return "Video de @$username";
           }
-          return null;
+
+          // Intentar extraer ID del video para URLs cortas
+          final shortRegExp = RegExp(r'vm\.tiktok\.com\/([^\/\?]+)');
+          final shortMatch = shortRegExp.firstMatch(url);
+          if (shortMatch != null && shortMatch.groupCount >= 1) {
+            debugPrint('ID de TikTok encontrado en URL corta');
+            return "Video de TikTok";
+          }
+          return "Video de TikTok";
 
         case PlatformType.twitter:
+          debugPrint('Extrayendo título de Twitter URL');
           // Intentar extraer username
-          final regExp = RegExp(r'twitter\.com\/([^\/]+)');
+          RegExp regExp;
+          if (url.contains('twitter.com')) {
+            regExp = RegExp(r'twitter\.com\/([^\/\?]+)');
+          } else if (url.contains('x.com')) {
+            regExp = RegExp(r'x\.com\/([^\/\?]+)');
+          } else {
+            return "Tweet";
+          }
+
           final match = regExp.firstMatch(url);
           if (match != null && match.groupCount >= 1) {
-            return "Tweet de ${match.group(1)}";
+            final username = match.group(1);
+            debugPrint('Usuario de Twitter encontrado: $username');
+            if (username != null &&
+                username != 'i' &&
+                username != 'status' &&
+                !username.startsWith('share')) {
+              return "Tweet de @$username";
+            }
           }
-          return null;
+          return "Tweet";
 
         default:
-          return null;
+          debugPrint('URL de tipo desconocido, usando título genérico');
+          // Para URLs desconocidas, extraer el dominio como título
+          try {
+            final uri = Uri.parse(url);
+            final host = uri.host;
+            if (host.isNotEmpty) {
+              return "Contenido de ${host.replaceFirst('www.', '')}";
+            }
+          } catch (e) {
+            debugPrint('Error al parsear URL: $e');
+          }
+          return "Contenido web";
       }
     } catch (e) {
       debugPrint('Error extracting title: $e');

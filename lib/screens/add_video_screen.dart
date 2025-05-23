@@ -30,7 +30,6 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
   String _thumbnailUrl = '';
   bool _isLoading = false;
   bool _isUrlValid = false;
-
   @override
   void initState() {
     super.initState();
@@ -45,10 +44,28 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
       _thumbnailUrl = widget.videoLinkToEdit!.thumbnailUrl;
       _isUrlValid = true;
     }
+
+    // Añadir listener para validar automáticamente cuando cambie el texto
+    _urlController.addListener(_onUrlChanged);
+  }
+
+  void _onUrlChanged() {
+    // Si el texto tiene un formato válido de URL y ha cambiado, validamos automáticamente
+    final url = _urlController.text.trim();
+    if (url.isNotEmpty && url.startsWith('http')) {
+      // Utilizamos un pequeño retraso para no validar con cada pulsación
+      Future.delayed(const Duration(milliseconds: 800), () {
+        // Verificamos si el texto sigue siendo el mismo después del retraso
+        if (_urlController.text.trim() == url) {
+          _validateUrl();
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    _urlController.removeListener(_onUrlChanged);
     _urlController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -63,51 +80,73 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
     });
 
     final url = _urlController.text.trim();
+    debugPrint('Validando URL: $url');
 
     // Detectar la plataforma
     final platform = _urlService.detectPlatform(url);
+    debugPrint('Plataforma detectada: $platform');
     setState(() {
       _selectedPlatform = platform;
     });
 
-    // Si es YouTube, trata de obtener la miniatura y el título
+    // Primero intentamos extraer un título básico de la URL
+    final basicTitle = _urlService.extractTitleFromUrl(url, platform);
+    if (basicTitle != null && _titleController.text.isEmpty) {
+      debugPrint('Título básico extraído: $basicTitle');
+      setState(() {
+        _titleController.text = basicTitle;
+      });
+    }
+
+    // Si es YouTube, trata de obtener la miniatura y el título más detallado
     if (platform == PlatformType.youtube) {
+      debugPrint('Obteniendo información de YouTube...');
       final youtubeInfo = await _urlService.getYouTubeInfo(url);
       if (youtubeInfo != null) {
+        debugPrint('Información de YouTube obtenida: $youtubeInfo');
         setState(() {
           _thumbnailUrl = youtubeInfo['thumbnailUrl'] ?? '';
           _isUrlValid = true;
 
-          // Si hay un título disponible y el campo está vacío, lo completamos automáticamente
-          if (youtubeInfo['title']?.isNotEmpty == true &&
-              _titleController.text.isEmpty) {
+          // Si hay un título disponible y es mejor que el básico que ya teníamos
+          if (youtubeInfo['title']?.isNotEmpty == true) {
+            debugPrint('Usando título de YouTube: ${youtubeInfo['title']}');
             _titleController.text = youtubeInfo['title'] ?? '';
           }
         });
-      }
-    } else {
-      // Para otras plataformas
-      final extractedTitle = _urlService.extractTitleFromUrl(url, platform);
-      if (extractedTitle != null) {
+      } else {
+        debugPrint('No se pudo obtener información de YouTube');
+        // Si no pudimos obtener información específica, seguimos marcando como válida
         setState(() {
-          _titleController.text = extractedTitle;
+          _isUrlValid = true;
         });
       }
+    } else {
+      debugPrint('Obteniendo información para otra plataforma...');
 
       // Lógica para obtener miniatura y título para otras plataformas
-      final otherPlatformInfo = await _urlService.getOtherPlatformInfo(url, platform);
+      final otherPlatformInfo = await _urlService.getOtherPlatformInfo(
+        url,
+        platform,
+      );
       if (otherPlatformInfo != null) {
+        debugPrint('Información obtenida: $otherPlatformInfo');
         setState(() {
           _thumbnailUrl = otherPlatformInfo['thumbnailUrl'] ?? '';
           _isUrlValid = true;
 
-          // Si hay un título disponible y el campo está vacío, lo completamos automáticamente
-          if (otherPlatformInfo['title']?.isNotEmpty == true &&
-              _titleController.text.isEmpty) {
-            _titleController.text = otherPlatformInfo['title'] ?? '';
+          // Si hay un título disponible y es mejor que el básico que ya teníamos
+          final infoTitle = otherPlatformInfo['title'];
+          if (infoTitle?.isNotEmpty == true &&
+              (infoTitle!.length > _titleController.text.length ||
+                  _titleController.text.isEmpty)) {
+            debugPrint('Usando título de plataforma: $infoTitle');
+            _titleController.text = infoTitle;
           }
         });
       } else {
+        debugPrint('No se pudo obtener información para esta URL');
+        // Si no pudimos obtener información específica, seguimos marcando como válida
         setState(() {
           _isUrlValid = true;
         });
@@ -240,10 +279,22 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
                         labelText: 'URL del Video',
                         hintText: 'Ej. https://www.youtube.com/watch?v=...',
                         suffixIcon: IconButton(
-                          icon: const Icon(Icons.check_circle),
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check_circle),
                           onPressed: _validateUrl,
                         ),
                       ),
+                      onEditingComplete:
+                          _validateUrl, // Validar al presionar Enter
+                      onFieldSubmitted: (_) =>
+                          _validateUrl(), // Validar al cambiar de campo
                       keyboardType: TextInputType.url,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
