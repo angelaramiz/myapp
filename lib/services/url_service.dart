@@ -3,6 +3,12 @@ import '../models/video_link.dart';
 import 'package:url_launcher/url_launcher.dart' as url_launcher;
 import 'package:http/http.dart' as http;
 
+// Importar servicios de extracción específicos para cada plataforma
+import 'facebook_extraction_service.dart';
+import 'instagram_extraction_service.dart';
+import 'tiktok_extraction_service.dart';
+import 'twitter_extraction_service.dart';
+
 class UrlService {
   // Función para obtener información de una URL de YouTube
   Future<Map<String, String>?> getYouTubeInfo(String url) async {
@@ -170,46 +176,70 @@ class UrlService {
     PlatformType platform,
   ) async {
     debugPrint('Obteniendo información para URL: $url, plataforma: $platform');
+
     try {
-      // Usamos un User-Agent para evitar bloqueos
-      final headers = {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36',
-      };
+      // Usar el servicio especializado según la plataforma
+      switch (platform) {
+        case PlatformType.facebook:
+          debugPrint('Usando servicio especializado para Facebook...');
+          return await FacebookExtractionService.getFacebookInfo(url);
 
-      final response = await http.get(Uri.parse(url), headers: headers);
-      if (response.statusCode == 200) {
-        final document = response.body;
-        debugPrint(
-          'Respuesta recibida con éxito, longitud: ${document.length}',
-        );
+        case PlatformType.instagram:
+          debugPrint('Usando servicio especializado para Instagram...');
+          return await InstagramExtractionService.getInstagramInfo(url);
 
-        // Extraer título
-        final titleRegExp = RegExp(
-          r'<title>(.*?)<\/title>',
-          caseSensitive: false,
-        );
-        final titleMatch = titleRegExp.firstMatch(document);
-        final title = titleMatch != null
-            ? titleMatch.group(1)
-            : 'Contenido compartido';
+        case PlatformType.tiktok:
+          debugPrint('Usando servicio especializado para TikTok...');
+          return await TikTokExtractionService.getTikTokInfo(url);
 
-        debugPrint('Título extraído: $title');
+        case PlatformType.twitter:
+          debugPrint('Usando servicio especializado para Twitter/X...');
+          return await TwitterExtractionService.getTwitterInfo(url);
 
-        // Extraer miniatura (simplificado)
-        final thumbnailRegExp = RegExp(
-          r'<meta property="og:image" content="(.*?)"',
-          caseSensitive: false,
-        );
-        final thumbnailMatch = thumbnailRegExp.firstMatch(document);
-        final thumbnailUrl = thumbnailMatch != null
-            ? thumbnailMatch.group(1)
-            : '';
+        default:
+          // Para plataformas desconocidas, usamos el método genérico
+          debugPrint('Usando método genérico para URL desconocida...');
 
-        return {'title': title ?? '', 'thumbnailUrl': thumbnailUrl ?? ''};
+          // Usamos un User-Agent para evitar bloqueos
+          final headers = {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36',
+          };
+
+          final response = await http.get(Uri.parse(url), headers: headers);
+          if (response.statusCode == 200) {
+            final document = response.body;
+            debugPrint(
+              'Respuesta recibida con éxito, longitud: ${document.length}',
+            );
+
+            // Extraer título
+            final titleRegExp = RegExp(
+              r'<title>(.*?)<\/title>',
+              caseSensitive: false,
+            );
+            final titleMatch = titleRegExp.firstMatch(document);
+            final title = titleMatch != null
+                ? titleMatch.group(1)
+                : 'Contenido compartido';
+
+            debugPrint('Título extraído: $title');
+
+            // Extraer miniatura (simplificado)
+            final thumbnailRegExp = RegExp(
+              r'<meta property="og:image" content="(.*?)"',
+              caseSensitive: false,
+            );
+            final thumbnailMatch = thumbnailRegExp.firstMatch(document);
+            final thumbnailUrl = thumbnailMatch != null
+                ? thumbnailMatch.group(1)
+                : '';
+
+            return {'title': title ?? '', 'thumbnailUrl': thumbnailUrl ?? ''};
+          }
       }
     } catch (e) {
-      debugPrint('Error extracting info from other platform: $e');
+      debugPrint('Error extracting info from platform: $e');
     }
     return null;
   }
