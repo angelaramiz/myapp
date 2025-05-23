@@ -5,6 +5,7 @@ import '../services/data_service.dart';
 import '../services/url_service.dart';
 import '../services/notification_service_simple.dart';
 import '../services/youtube_extraction_service.dart';
+import '../services/extraction_helper.dart';
 
 class AddVideoScreen extends StatefulWidget {
   final String folderId;
@@ -135,26 +136,56 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
         });
       }
     } else {
-      debugPrint('Obteniendo información para otra plataforma...');
-
-      // Lógica para obtener miniatura y título para otras plataformas
+      debugPrint(
+        'Obteniendo información para otra plataforma...',
+      ); // Lógica para obtener miniatura y título para otras plataformas
       final otherPlatformInfo = await _urlService.getOtherPlatformInfo(
         url,
         platform,
       );
       if (otherPlatformInfo != null) {
         debugPrint('Información obtenida: $otherPlatformInfo');
+
+        // Verificar si la miniatura es una URL válida
+        String thumbnail = otherPlatformInfo['thumbnailUrl'] ?? '';
+        bool hasThumbnail =
+            thumbnail.isNotEmpty &&
+            (thumbnail.startsWith('http://') ||
+                thumbnail.startsWith('https://'));
+
         setState(() {
-          _thumbnailUrl = otherPlatformInfo['thumbnailUrl'] ?? '';
+          if (hasThumbnail) {
+            _thumbnailUrl = thumbnail;
+            debugPrint('Miniatura válida encontrada: $_thumbnailUrl');
+          } else {
+            debugPrint('No se encontró una miniatura válida');
+          }
           _isUrlValid = true;
 
-          // Si hay un título disponible y es mejor que el básico que ya teníamos
+          // Si hay un título disponible, usarlo
           final infoTitle = otherPlatformInfo['title'];
-          if (infoTitle?.isNotEmpty == true &&
-              (infoTitle!.length > _titleController.text.length ||
-                  _titleController.text.isEmpty)) {
-            debugPrint('Usando título de plataforma: $infoTitle');
-            _titleController.text = infoTitle;
+          if (infoTitle?.isNotEmpty == true) {
+            // Comprobar si el título parece contener información real del contenido
+            // (evitamos títulos genéricos a menos que sea lo único disponible)
+            bool isBetterTitle =
+                infoTitle!.length > _titleController.text.length ||
+                _titleController.text.isEmpty;
+            // Usar el helper para detectar títulos genéricos
+            bool isGenericTitle = ExtractionHelper.isGenericTitle(
+              infoTitle,
+              platform.toString().split('.').last,
+            );
+
+            if (isBetterTitle && !isGenericTitle) {
+              debugPrint(
+                'Usando título específico de la plataforma: $infoTitle',
+              );
+              _titleController.text = infoTitle;
+            } else if (_titleController.text.isEmpty) {
+              // Si no tenemos un título mejor, usar el disponible incluso si es genérico
+              debugPrint('Usando título genérico de la plataforma: $infoTitle');
+              _titleController.text = infoTitle;
+            }
           }
         });
       } else {

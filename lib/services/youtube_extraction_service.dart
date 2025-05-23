@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'extraction_helper.dart';
 
 /// Un servicio dedicado para extraer información de videos de YouTube
 class YouTubeExtractionService {
@@ -149,7 +150,22 @@ class YouTubeExtractionService {
   static Future<Map<String, String>?> getYouTubeVideoInfo(String url) async {
     final videoId = extractVideoId(url);
     if (videoId != null) {
-      return await getVideoInfo(videoId);
+      final info = await getVideoInfo(videoId);
+
+      // Limpiar y normalizar el título y la miniatura
+      if (info.containsKey('title') && info['title']!.isNotEmpty) {
+        info['title'] = ExtractionHelper.cleanupTitle(info['title']!);
+      }
+
+      if (info.containsKey('thumbnailUrl') &&
+          info['thumbnailUrl']!.isNotEmpty) {
+        info['thumbnailUrl'] = ExtractionHelper.normalizeImageUrl(
+          info['thumbnailUrl']!,
+          url,
+        );
+      }
+
+      return info;
     }
     return null;
   }

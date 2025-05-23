@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'extraction_helper.dart';
 
 /// Servicio dedicado para extraer información de posts de Instagram
 class InstagramExtractionService {
@@ -57,59 +58,157 @@ class InstagramExtractionService {
     try {
       // Extraer información base
       Map<String, String>? baseInfo = extractPostInfo(url);
-      if (baseInfo == null) return null;
-
-      // Obtener datos de la página
+      if (baseInfo == null) {
+        return null; // Obtener datos de la página con headers mejorados
+      }
       final headers = {
         'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
+        'Cache-Control': 'max-age=0',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer':
+            'https://www.google.com/', // Instagram suele verificar el referer
       };
 
       final response = await http.get(Uri.parse(url), headers: headers);
       if (response.statusCode == 200) {
-        final document = response.body;
-
-        // Extraer título
+        final document =
+            response.body; // Extraer título con métodos más robustos
         String title = '';
-        final titleRegExp = RegExp(
-          r'<title>(.*?)<\/title>',
+        String description = '';
+
+        // Método 1: Extraer desde og:title
+        final ogTitleRegExp = RegExp(
+          r'<meta\s+property="og:title"\s+content="([^"]*)"',
           caseSensitive: false,
         );
-        final titleMatch = titleRegExp.firstMatch(document);
-        if (titleMatch != null && titleMatch.groupCount >= 1) {
-          title = titleMatch.group(1) ?? '';
-          // Limpiar título (Instagram suele incluir "en Instagram:" o similares)
-          if (title.contains(' en Instagram:')) {
-            title = title.split(' en Instagram:')[0];
-          } else if (title.contains(' on Instagram:')) {
-            title = title.split(' on Instagram:')[0];
+        final ogTitleMatch = ogTitleRegExp.firstMatch(document);
+        if (ogTitleMatch != null && ogTitleMatch.groupCount >= 1) {
+          title = ogTitleMatch.group(1) ?? '';
+          debugPrint('Instagram: Título extraído de og:title: $title');
+        }
+
+        // Método 2: Extraer desde meta description que suele contener el contenido real
+        final descRegExp = RegExp(
+          r'<meta\s+name="description"\s+content="([^"]*)"',
+          caseSensitive: false,
+        );
+        final descMatch = descRegExp.firstMatch(document);
+        if (descMatch != null && descMatch.groupCount >= 1) {
+          description = descMatch.group(1) ?? '';
+          debugPrint('Instagram: Descripción extraída: $description');
+
+          // Si la descripción es más larga que el título actual y contiene texto real
+          // (normalmente contiene la descripción del post/reel)
+          if (description.length > 20 &&
+              (title.isEmpty || description.length > title.length)) {
+            // Usamos la descripción como título si parece más informativa
+            title = description;
           }
         }
 
-        // Extraer miniatura
+        // Método 3: Título normal
+        if (title.isEmpty) {
+          final titleRegExp = RegExp(
+            r'<title>(.*?)<\/title>',
+            caseSensitive: false,
+          );
+          final titleMatch = titleRegExp.firstMatch(document);
+          if (titleMatch != null && titleMatch.groupCount >= 1) {
+            title = titleMatch.group(1) ?? '';
+            debugPrint('Instagram: Título extraído de title: $title');
+          }
+        }
+
+        // Limpieza adicional del título
+        if (title.contains(' en Instagram:')) {
+          title = title.split(' en Instagram:')[0].trim();
+        } else if (title.contains(' on Instagram:')) {
+          title = title.split(' on Instagram:')[0].trim();
+        } else if (title.contains(' (@')) {
+          title = title.split(' (@')[0].trim();
+        } else if (title.contains(' shared a ')) {
+          // Extraer el contenido real del título
+          title = title
+              .replaceAll(RegExp(r'.*shared a (post|reel|photo|video):\s*'), '')
+              .trim();
+        } // Extraer miniatura con métodos más robustos
         String thumbnailUrl = '';
+
+        // Método 1: Extraer desde og:image (método estándar)
         final thumbnailRegExp = RegExp(
-          r'<meta\s+property="og:image"\s+content="(.*?)"',
+          r'<meta\s+property="og:image"\s+content="([^"]*)"',
           caseSensitive: false,
         );
         final thumbnailMatch = thumbnailRegExp.firstMatch(document);
         if (thumbnailMatch != null && thumbnailMatch.groupCount >= 1) {
           thumbnailUrl = thumbnailMatch.group(1) ?? '';
+          debugPrint(
+            'Instagram: Miniatura extraída de og:image: $thumbnailUrl',
+          );
         }
 
-        // Si no hay miniatura por og:image, intentar con twitter:image
+        // Método 2: Extraer desde twitter:image
         if (thumbnailUrl.isEmpty) {
           final altThumbnailRegExp = RegExp(
-            r'<meta\s+name="twitter:image"\s+content="(.*?)"',
+            r'<meta\s+name="twitter:image"\s+content="([^"]*)"',
             caseSensitive: false,
           );
           final altThumbnailMatch = altThumbnailRegExp.firstMatch(document);
           if (altThumbnailMatch != null && altThumbnailMatch.groupCount >= 1) {
             thumbnailUrl = altThumbnailMatch.group(1) ?? '';
+            debugPrint(
+              'Instagram: Miniatura extraída de twitter:image: $thumbnailUrl',
+            );
           }
         }
 
-        // Construir título si no se encontró
+        // Método 3: Buscar en el HTML por URLs de imágenes específicas de Instagram
+        if (thumbnailUrl.isEmpty) {
+          // Buscar URLs de imagen en el formato común de Instagram
+          final imgUrlRegExp = RegExp(
+            r'"display_url":"([^"]+)"',
+            caseSensitive: false,
+          );
+          final imgUrlMatch = imgUrlRegExp.firstMatch(document);
+          if (imgUrlMatch != null && imgUrlMatch.groupCount >= 1) {
+            thumbnailUrl = imgUrlMatch.group(1) ?? '';
+            // Reemplazar secuencias unicode
+            thumbnailUrl = thumbnailUrl
+                .replaceAll(r'\u0025', '%')
+                .replaceAll(r'\/', '/');
+            debugPrint(
+              'Instagram: Miniatura extraída del código JSON: $thumbnailUrl',
+            );
+          }
+        }
+
+        // Método 4: Buscar por patrón en atributo content
+        if (thumbnailUrl.isEmpty) {
+          final contentImgRegExp = RegExp(
+            r'content="(https:\/\/[^"]*instagram[^"]*\.(?:jpg|jpeg|png))"',
+            caseSensitive: false,
+          );
+          final contentImgMatches = contentImgRegExp.allMatches(document);
+          for (var match in contentImgMatches) {
+            if (match.groupCount >= 1) {
+              thumbnailUrl = match.group(1) ?? '';
+              if (thumbnailUrl.isNotEmpty) {
+                debugPrint(
+                  'Instagram: Miniatura extraída de atributo content: $thumbnailUrl',
+                );
+                break;
+              }
+            }
+          }
+        } // Construir título si no se encontró
         if (title.isEmpty) {
           if (baseInfo['isReel'] == 'true') {
             title = baseInfo['username']?.isNotEmpty == true
@@ -121,6 +220,10 @@ class InstagramExtractionService {
             title = "Post de Instagram";
           }
         }
+
+        // Limpiar y normalizar título y miniatura
+        title = ExtractionHelper.cleanupTitle(title);
+        thumbnailUrl = ExtractionHelper.normalizeImageUrl(thumbnailUrl, url);
 
         return {
           'title': title,
