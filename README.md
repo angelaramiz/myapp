@@ -50,7 +50,7 @@
 
 ## Tutorial
 1. Abre la aplicación en tu dispositivo/emulador.
-2. Copia la URL de un contenido de YouTube: `https://www.youtube.com/watch?v=dQw4w9WgXcQ`.
+2. Copia la URL de un contenido de YouTube: .
 3. Pégala en el campo de texto y pulsa **Probar Extracción**.
 4. Verás la miniatura del video y el título extraído.
 5. Repite los pasos con otras plataformas:

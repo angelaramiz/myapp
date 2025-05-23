@@ -46,28 +46,11 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
       _thumbnailUrl = widget.videoLinkToEdit!.thumbnailUrl;
       _isUrlValid = true;
     }
-
-    // Añadir listener para validar automáticamente cuando cambie el texto
-    _urlController.addListener(_onUrlChanged);
   }
 
-  void _onUrlChanged() {
-    // Si el texto tiene un formato válido de URL y ha cambiado, validamos automáticamente
-    final url = _urlController.text.trim();
-    if (url.isNotEmpty && url.startsWith('http')) {
-      // Utilizamos un pequeño retraso para no validar con cada pulsación
-      Future.delayed(const Duration(milliseconds: 800), () {
-        // Verificamos si el texto sigue siendo el mismo después del retraso
-        if (_urlController.text.trim() == url) {
-          _validateUrl();
-        }
-      });
-    }
-  }
 
   @override
   void dispose() {
-    _urlController.removeListener(_onUrlChanged);
     _urlController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
