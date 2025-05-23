@@ -96,9 +96,7 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
       setState(() {
         _titleController.text = basicTitle;
       });
-    }
-
-    // Si es YouTube, trata de obtener la miniatura y el título más detallado
+    } // Si es YouTube, trata de obtener la miniatura y el título más detallado
     if (platform == PlatformType.youtube) {
       debugPrint('Obteniendo información de YouTube...');
       final youtubeInfo = await _urlService.getYouTubeInfo(url);
@@ -108,10 +106,17 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
           _thumbnailUrl = youtubeInfo['thumbnailUrl'] ?? '';
           _isUrlValid = true;
 
-          // Si hay un título disponible y es mejor que el básico que ya teníamos
-          if (youtubeInfo['title']?.isNotEmpty == true) {
-            debugPrint('Usando título de YouTube: ${youtubeInfo['title']}');
-            _titleController.text = youtubeInfo['title'] ?? '';
+          // Para YouTube, siempre usamos el título extraído de la API si está disponible
+          final youtubeTitle = youtubeInfo['title'] ?? '';
+          if (youtubeTitle.isNotEmpty) {
+            debugPrint('Usando título de YouTube: $youtubeTitle');
+            _titleController.text = youtubeTitle;
+          } else {
+            debugPrint('No se pudo extraer el título de YouTube');
+            // Si no hay título de la API pero el campo está vacío, usamos un genérico
+            if (_titleController.text.isEmpty) {
+              _titleController.text = "Video de YouTube";
+            }
           }
         });
       } else {

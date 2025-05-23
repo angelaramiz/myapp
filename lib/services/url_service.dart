@@ -188,18 +188,11 @@ class UrlService {
       // Extrae el título de diferentes formas según la plataforma
       switch (platform) {
         case PlatformType.youtube:
-          // Ya se maneja en getYouTubeInfo, pero intentamos extraer un título básico
-          final regExp = RegExp(
-            r'(?:youtube\.com\/(?:.*v=|.*vi=|watch\/)|(youtu\.be\/))([^&?#]+)',
+          // Para YouTube, no devolvemos un título genérico sino null
+          // La extracción del título real se maneja en getYouTubeInfo
+          debugPrint(
+            'URL de YouTube detectada, el título se obtendrá con getYouTubeInfo',
           );
-          final match = regExp.firstMatch(url);
-          if (match != null && match.groupCount >= 1) {
-            String videoId = match.group(2) ?? match.group(1) ?? '';
-            if (videoId.isNotEmpty) {
-              debugPrint('ID de video encontrado en URL: $videoId');
-              return "Video de YouTube";
-            }
-          }
           return null;
 
         case PlatformType.facebook:
