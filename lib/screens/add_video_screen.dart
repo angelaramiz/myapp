@@ -4,6 +4,7 @@ import '../models/video_link.dart';
 import '../services/data_service.dart';
 import '../services/url_service.dart';
 import '../services/notification_service_simple.dart';
+import '../services/youtube_extraction_service.dart';
 
 class AddVideoScreen extends StatefulWidget {
   final String folderId;
@@ -98,8 +99,15 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
       });
     } // Si es YouTube, trata de obtener la miniatura y el título más detallado
     if (platform == PlatformType.youtube) {
-      debugPrint('Obteniendo información de YouTube...');
-      final youtubeInfo = await _urlService.getYouTubeInfo(url);
+      debugPrint(
+        'Obteniendo información de YouTube con el servicio especializado...',
+      );
+
+      // Usar el servicio especializado para YouTube
+      final youtubeInfo = await YouTubeExtractionService.getYouTubeVideoInfo(
+        url,
+      );
+
       if (youtubeInfo != null) {
         debugPrint('Información de YouTube obtenida: $youtubeInfo');
         setState(() {

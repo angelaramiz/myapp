@@ -37,7 +37,54 @@ class UrlService {
           debugPrint('Título extraído de la URL: $title');
         }
 
-        // Si no se encontró un título en la URL, intentamos obtenerlo desde el contenido de la página
+        // Si no se encontró un título en la URL, intentamos utilizar una forma alternativa
+        // Utilizar la API pública de oEmbed de YouTube que no requiere clave API
+        if (title.isEmpty) {
+          try {
+            debugPrint(
+              'Intentando obtener título usando la API de oEmbed de YouTube...',
+            );
+
+            final oembedUrl =
+                'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=$videoId&format=json';
+
+            final headers = {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
+            };
+
+            final response = await http.get(
+              Uri.parse(oembedUrl),
+              headers: headers,
+            );
+
+            if (response.statusCode == 200) {
+              // Obtener el objeto JSON de la respuesta
+              final jsonResponse = response.body;
+              debugPrint('Respuesta de oEmbed recibida: $jsonResponse');
+
+              // Buscar el campo "title" en la respuesta JSON
+              final titleRegExp = RegExp(r'"title"\s*:\s*"([^"]+)"');
+              final titleMatch = titleRegExp.firstMatch(jsonResponse);
+
+              if (titleMatch != null && titleMatch.groupCount >= 1) {
+                title = titleMatch.group(1) ?? '';
+                // Decodificar las secuencias de escape JSON
+                title = title.replaceAll(r'\"', '"').replaceAll(r'\/', '/');
+                debugPrint('Título extraído de oEmbed: $title');
+              }
+            } else {
+              debugPrint(
+                'Error al obtener datos de oEmbed: ${response.statusCode}',
+              );
+            }
+          } catch (e) {
+            debugPrint('Error obteniendo título desde oEmbed: $e');
+          }
+        }
+
+        // Si aún no tenemos título, intentamos extraerlo del contenido HTML
         if (title.isEmpty) {
           try {
             debugPrint(
@@ -80,6 +127,20 @@ class UrlService {
                 }
                 title = extractedTitle.trim();
                 debugPrint('Título limpio: $title');
+              }
+
+              // Si todavía no tenemos título, intentamos buscar en el meta tag "og:title"
+              if (title.isEmpty) {
+                final ogTitleRegExp = RegExp(
+                  r'<meta\s+property="og:title"\s+content="([^"]+)"',
+                  caseSensitive: false,
+                );
+                final ogTitleMatch = ogTitleRegExp.firstMatch(htmlContent);
+
+                if (ogTitleMatch != null && ogTitleMatch.groupCount >= 1) {
+                  title = ogTitleMatch.group(1) ?? '';
+                  debugPrint('Título extraído de meta og:title: $title');
+                }
               }
             } else {
               debugPrint(
