@@ -20,9 +20,10 @@ class UrlService {
         // con una clave API apropiada para obtener esta información.
         final thumbnailUrl = 'https://img.youtube.com/vi/$videoId/0.jpg';
 
-        // Intentar extraer el título del video de la URL
+        // Intentar extraer el título del video usando petición HTTP para obtener el contenido
         String title = "";
-        // Si la URL contiene el parámetro title
+        
+        // Primero, intentamos extraerlo de la URL si contiene el parámetro title
         RegExp titleRegExp = RegExp(r'(?:title=)([^&]+)');
         RegExpMatch? titleMatch = titleRegExp.firstMatch(url);
         if (titleMatch != null && titleMatch.groupCount >= 1) {
@@ -30,6 +31,29 @@ class UrlService {
           title = Uri.decodeComponent(
             titleMatch.group(1)!.replaceAll('+', ' '),
           );
+        }
+        
+        // Si no se encontró un título en la URL, intentamos obtenerlo desde el contenido de la página
+        if (title.isEmpty) {
+          try {
+            final response = await http.get(Uri.parse('https://www.youtube.com/watch?v=$videoId'));
+            if (response.statusCode == 200) {
+              // Extraer el título de la etiqueta <title>
+              final htmlContent = response.body;
+              final titleRegExp = RegExp(r'<title>(.*?)<\/title>', caseSensitive: false);
+              final titleMatch = titleRegExp.firstMatch(htmlContent);
+              if (titleMatch != null && titleMatch.groupCount >= 1) {
+                String extractedTitle = titleMatch.group(1) ?? '';
+                // Limpiar el título (YouTube generalmente añade " - YouTube" al final)
+                if (extractedTitle.endsWith(' - YouTube')) {
+                  extractedTitle = extractedTitle.substring(0, extractedTitle.length - 10);
+                }
+                title = extractedTitle.trim();
+              }
+            }
+          } catch (e) {
+            debugPrint('Error obteniendo título desde contenido: $e');
+          }
         }
 
         return {
