@@ -55,6 +55,7 @@ class ExtractionHelper {
         .replaceAll(r'\u002E', '.')
         .replaceAll(r'\/', '/');
   }
+
   /// Limpia y mejora un título
   static String cleanupTitle(String title) {
     if (title.isEmpty) {
