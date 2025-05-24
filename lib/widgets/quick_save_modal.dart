@@ -5,6 +5,11 @@ import '../models/video_link.dart';
 import '../screens/share_receiver_screen.dart';
 import '../services/data_service.dart';
 import '../services/url_service.dart';
+import '../services/thumbnail_service.dart';
+import '../services/facebook_extraction_service.dart';
+import '../services/instagram_extraction_service.dart';
+import '../services/tiktok_extraction_service.dart';
+import '../services/twitter_extraction_service.dart';
 
 class QuickSaveModal extends StatefulWidget {
   final String sharedUrl;
@@ -21,7 +26,6 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
   final _descriptionController = TextEditingController();
   final _dataService = DataService();
   final _urlService = UrlService();
-
   String _thumbnailUrl = '';
   PlatformType _platform = PlatformType.other;
   List<Folder> _folders = [];
@@ -29,6 +33,8 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isUrlValid = false;
+  bool _isLoadingThumbnail =
+      false; // Variable para tracking del estado de carga de miniatura
 
   @override
   void initState() {
@@ -66,68 +72,124 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
 
     // Obtener información según la plataforma
     if (platform == PlatformType.youtube) {
+      // Para YouTube, usar tanto el servicio existente como el mejorado para miniaturas
       final youtubeInfo = await _urlService.getYouTubeInfo(url);
-      if (youtubeInfo != null) {
+      String? thumbnailUrl; // Intentar obtener miniatura mejorada
+      setState(() {
+        _isLoadingThumbnail = true;
+      });
+
+      try {
+        thumbnailUrl = await ThumbnailService.getBestThumbnail(url, platform);
+      } catch (e) {
+        debugPrint('Error obteniendo miniatura mejorada: $e');
+      } finally {
         setState(() {
-          _thumbnailUrl = youtubeInfo['thumbnailUrl'] ?? '';
-          if (youtubeInfo['title']?.isNotEmpty == true) {
-            _titleController.text = youtubeInfo['title'] ?? '';
-          } else {
-            _titleController.text = 'Video de YouTube';
-          }
-          _isUrlValid = true;
+          _isLoadingThumbnail = false;
         });
-      } else {
-        _titleController.text = 'Video de YouTube';
-        _isUrlValid = true;
       }
+
+      // Si no se obtuvo miniatura mejorada, usar la del servicio existente
+      thumbnailUrl ??= youtubeInfo?['thumbnailUrl'];
+
+      setState(() {
+        _thumbnailUrl = thumbnailUrl ?? '';
+        if (youtubeInfo != null && youtubeInfo['title']?.isNotEmpty == true) {
+          _titleController.text = youtubeInfo['title'] ?? '';
+        } else {
+          _titleController.text = 'Video de YouTube';
+        }
+        _isUrlValid = true;
+      });
     } else {
-      // Para otras plataformas
-      final extractedTitle = _urlService.extractTitleFromUrl(url, platform);
-      if (extractedTitle != null) {
-        _titleController.text = extractedTitle;
-      } else {
-        // Título genérico basado en la plataforma
+      // Para otras plataformas, intentar usar servicios específicos
+      Map<String, String>? extractedInfo;
+
+      try {
         switch (platform) {
           case PlatformType.facebook:
-            _titleController.text = 'Video de Facebook';
+            extractedInfo = await FacebookExtractionService.getFacebookInfo(
+              url,
+            );
             break;
           case PlatformType.instagram:
-            _titleController.text = 'Post de Instagram';
+            extractedInfo = await InstagramExtractionService.getInstagramInfo(
+              url,
+            );
             break;
           case PlatformType.tiktok:
-            _titleController.text = 'Video de TikTok';
+            extractedInfo = await TikTokExtractionService.getTikTokInfo(url);
             break;
           case PlatformType.twitter:
-            _titleController.text = 'Tweet';
+            extractedInfo = await TwitterExtractionService.getTwitterInfo(url);
             break;
           default:
-            _titleController.text = 'Contenido compartido';
-            break;
+            extractedInfo = await _urlService.getOtherPlatformInfo(
+              url,
+              platform,
+            );
         }
-      }
+      } catch (e) {
+        debugPrint('Error extrayendo información específica: $e');
+      } // Usar el nuevo servicio de miniaturas mejorado para otras plataformas
+      String? thumbnailUrl;
+      setState(() {
+        _isLoadingThumbnail = true;
+      });
 
-      // Lógica para obtener miniatura y título para otras plataformas
-      final otherPlatformInfo = await _urlService.getOtherPlatformInfo(
-        url,
-        platform,
-      );
-      if (otherPlatformInfo != null) {
+      try {
+        thumbnailUrl = await ThumbnailService.getBestThumbnail(url, platform);
+        debugPrint('Miniatura obtenida con servicio mejorado: $thumbnailUrl');
+      } catch (e) {
+        debugPrint('Error con servicio de miniatura mejorado: $e');
+      } finally {
         setState(() {
-          _thumbnailUrl = otherPlatformInfo['thumbnailUrl'] ?? '';
-          _isUrlValid = true;
-
-          // Si hay un título disponible y el campo está vacío, lo completamos automáticamente
-          if (otherPlatformInfo['title']?.isNotEmpty == true &&
-              _titleController.text.isEmpty) {
-            _titleController.text = otherPlatformInfo['title'] ?? '';
-          }
-        });
-      } else {
-        setState(() {
-          _isUrlValid = true;
+          _isLoadingThumbnail = false;
         });
       }
+
+      // Si no se obtuvo miniatura con el servicio mejorado, usar la extraída
+      if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+        thumbnailUrl = extractedInfo?['thumbnailUrl'];
+      }
+
+      setState(() {
+        _thumbnailUrl = thumbnailUrl ?? '';
+
+        // Usar el título extraído si está disponible
+        if (extractedInfo != null &&
+            extractedInfo['title']?.isNotEmpty == true) {
+          _titleController.text = extractedInfo['title'] ?? '';
+        } else {
+          // Título genérico basado en la plataforma
+          _titleController.text = _getDefaultTitleForPlatform(platform);
+        }
+
+        // Usar descripción si está disponible
+        if (extractedInfo != null &&
+            extractedInfo['description']?.isNotEmpty == true) {
+          _descriptionController.text = extractedInfo['description'] ?? '';
+        }
+
+        _isUrlValid = true;
+      });
+    }
+  }
+
+  String _getDefaultTitleForPlatform(PlatformType platform) {
+    switch (platform) {
+      case PlatformType.youtube:
+        return 'Video de YouTube';
+      case PlatformType.facebook:
+        return 'Video de Facebook';
+      case PlatformType.instagram:
+        return 'Post de Instagram';
+      case PlatformType.tiktok:
+        return 'Video de TikTok';
+      case PlatformType.twitter:
+        return 'Tweet';
+      default:
+        return 'Contenido compartido';
     }
   }
 
@@ -266,13 +328,16 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
                               children: [
                                 // URL y plataforma
                                 _buildUrlInfoCard(),
+                                const SizedBox(
+                                  height: 16,
+                                ), // Miniatura si está disponible
+                                if (_thumbnailUrl.isNotEmpty)
+                                  _buildThumbnailCard()
+                                else if (_isLoadingThumbnail)
+                                  _buildLoadingThumbnail()
+                                else
+                                  _buildThumbnailPlaceholder(),
                                 const SizedBox(height: 16),
-
-                                // Miniatura si está disponible
-                                if (_thumbnailUrl.isNotEmpty)
-                                  _buildThumbnailCard(),
-                                if (_thumbnailUrl.isNotEmpty)
-                                  const SizedBox(height: 16),
 
                                 // Campo de título
                                 _buildTitleField(),
@@ -346,19 +411,169 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
       clipBehavior: Clip.antiAlias,
       child: AspectRatio(
         aspectRatio: 16 / 9,
-        child: Image.network(
-          _thumbnailUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Colors.grey[200],
-              child: const Icon(
-                Icons.image_not_supported,
-                size: 50,
-                color: Colors.grey,
+        child: Stack(
+          children: [
+            // Imagen principal
+            Image.network(
+              _thumbnailUrl,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) {
+                  return child;
+                }
+                return Container(
+                  color: Colors.grey[200],
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Cargando miniatura...',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                debugPrint('Error cargando miniatura: $error');
+                return Container(
+                  color: Colors.grey[200],
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.image_not_supported,
+                        size: 50,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No se pudo cargar la miniatura',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
+            // Overlay con icono de plataforma
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Icon(_platform.getIcon(), color: Colors.white, size: 16),
               ),
-            );
-          },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailPlaceholder() {
+    return Card(
+      elevation: 2,
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _platform.getColor().withValues(alpha: 0.1),
+                _platform.getColor().withValues(alpha: 0.2),
+              ],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(_platform.getIcon(), size: 60, color: _platform.getColor()),
+              const SizedBox(height: 8),
+              Text(
+                'Contenido de ${_platform.getName()}',
+                style: TextStyle(
+                  color: _platform.getColor(),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Miniatura no disponible',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingThumbnail() {
+    return Card(
+      elevation: 2,
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _platform.getColor().withValues(alpha: 0.05),
+                _platform.getColor().withValues(alpha: 0.1),
+              ],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: _platform.getColor()),
+              const SizedBox(height: 16),
+              Icon(
+                _platform.getIcon(),
+                size: 40,
+                color: _platform.getColor().withValues(alpha: 0.7),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Obteniendo miniatura...',
+                style: TextStyle(
+                  color: _platform.getColor(),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'De ${_platform.getName()}',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ),
     );
