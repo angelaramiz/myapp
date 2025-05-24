@@ -117,7 +117,8 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
     } catch (e) {
       debugPrint('Error al extraer información: $e');
       setState(() {
-        _isUrlValid = true; // Permitir continuar aunque no se pueda extraer info
+        _isUrlValid =
+            true; // Permitir continuar aunque no se pueda extraer info
       });
     }
 
@@ -165,7 +166,8 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
     });
 
     try {
-      final videoLink = widget.videoLinkToEdit?.copyWith(
+      final videoLink =
+          widget.videoLinkToEdit?.copyWith(
             title: _titleController.text.trim(),
             description: _descriptionController.text.trim(),
             url: _urlController.text.trim(),
@@ -210,9 +212,9 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) {
@@ -291,25 +293,25 @@ class _AddVideoScreenState extends State<AddVideoScreen> {
                                 platform == PlatformType.youtube
                                     ? Icons.youtube_searched_for
                                     : platform == PlatformType.facebook
-                                        ? Icons.facebook
-                                        : platform == PlatformType.instagram
-                                            ? Icons.camera_alt
-                                            : platform == PlatformType.tiktok
-                                                ? Icons.music_note
-                                                : platform == PlatformType.twitter
-                                                    ? Icons.campaign
-                                                    : Icons.link,
+                                    ? Icons.facebook
+                                    : platform == PlatformType.instagram
+                                    ? Icons.camera_alt
+                                    : platform == PlatformType.tiktok
+                                    ? Icons.music_note
+                                    : platform == PlatformType.twitter
+                                    ? Icons.campaign
+                                    : Icons.link,
                                 color: platform == PlatformType.youtube
                                     ? Colors.red
                                     : platform == PlatformType.facebook
-                                        ? Colors.blue
-                                        : platform == PlatformType.instagram
-                                            ? Colors.purple
-                                            : platform == PlatformType.tiktok
-                                                ? Colors.black
-                                                : platform == PlatformType.twitter
-                                                    ? Colors.lightBlue
-                                                    : Colors.grey,
+                                    ? Colors.blue
+                                    : platform == PlatformType.instagram
+                                    ? Colors.purple
+                                    : platform == PlatformType.tiktok
+                                    ? Colors.black
+                                    : platform == PlatformType.twitter
+                                    ? Colors.lightBlue
+                                    : Colors.grey,
                               ),
                               const SizedBox(width: 10),
                               Text(platform.toString().split('.').last),

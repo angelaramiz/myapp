@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 
 /// Clase de utilidad para mejorar y normalizar la extracción de información de plataformas
@@ -54,11 +55,18 @@ class ExtractionHelper {
         .replaceAll(r'\u002E', '.')
         .replaceAll(r'\/', '/');
   }
-
   /// Limpia y mejora un título
   static String cleanupTitle(String title) {
-    if (title.isEmpty) return '';
-
+    if (title.isEmpty) {
+      return ''; // Decodificar secuencias Unicode (por ejemplo emojis)
+    }
+    try {
+      final decoded =
+          json.decode('"${title.replaceAll('"', '\\"')}"') as String;
+      title = decoded;
+    } catch (e) {
+      // Ignorar si falla el decode
+    }
     String cleanTitle = title;
 
     // Eliminar secuencias de escape comunes
@@ -72,6 +80,7 @@ class ExtractionHelper {
         .replaceAll(r'\/', '/');
 
     // Eliminar múltiples espacios en blanco
+    // Eliminar múltiples espacios
     cleanTitle = cleanTitle.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     // Limitar la longitud del título para evitar títulos excesivamente largos
