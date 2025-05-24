@@ -10,6 +10,7 @@ import '../services/facebook_extraction_service.dart';
 import '../services/instagram_extraction_service.dart';
 import '../services/tiktok_extraction_service.dart';
 import '../services/twitter_extraction_service.dart';
+import 'package:http/http.dart' as http;
 
 class QuickSaveModal extends StatefulWidget {
   final String sharedUrl;
@@ -136,10 +137,22 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
       setState(() {
         _isLoadingThumbnail = true;
       });
-
       try {
         thumbnailUrl = await ThumbnailService.getBestThumbnail(url, platform);
         debugPrint('Miniatura obtenida con servicio mejorado: $thumbnailUrl');
+
+        // Validar la URL obtenida
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+          final validatedUrl = await _validateThumbnailUrl(thumbnailUrl);
+          if (validatedUrl == null) {
+            debugPrint(
+              'URL de miniatura no válida, intentando con extracción HTML...',
+            );
+            thumbnailUrl = null;
+          } else {
+            thumbnailUrl = validatedUrl;
+          }
+        }
       } catch (e) {
         debugPrint('Error con servicio de miniatura mejorado: $e');
       } finally {
@@ -151,6 +164,12 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
       // Si no se obtuvo miniatura con el servicio mejorado, usar la extraída
       if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
         thumbnailUrl = extractedInfo?['thumbnailUrl'];
+
+        // Validar también la URL extraída
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+          final validatedUrl = await _validateThumbnailUrl(thumbnailUrl);
+          thumbnailUrl = validatedUrl;
+        }
       }
 
       setState(() {
@@ -241,6 +260,54 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
           _isSaving = false;
         });
       }
+    }
+  }
+
+  /// Valida y limpia URLs de miniaturas problemáticas
+  Future<String?> _validateThumbnailUrl(String? url) async {
+    if (url == null || url.isEmpty) {
+      debugPrint('URL de miniatura vacía');
+      return null;
+    }
+
+    // Limpiar URL de caracteres problemáticos
+    final cleanedUrl = url
+        .replaceAll('&amp;', '&')
+        .replaceAll('\\u0026', '&')
+        .replaceAll('\\/', '/')
+        .trim();
+
+    debugPrint('Validando URL de miniatura: $cleanedUrl');
+
+    try {
+      // Verificar que sea una URL válida
+      final uri = Uri.parse(cleanedUrl);
+      if (!uri.hasScheme || (!uri.scheme.startsWith('http'))) {
+        debugPrint('URL inválida - esquema problemático: $cleanedUrl');
+        return null;
+      }
+
+      // Verificar accesibilidad con timeout corto
+      final response = await http
+          .head(Uri.parse(cleanedUrl))
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final contentType = response.headers['content-type'];
+        if (contentType != null && contentType.startsWith('image/')) {
+          debugPrint('URL de miniatura válida: $cleanedUrl');
+          return cleanedUrl;
+        } else {
+          debugPrint('URL no es imagen válida - Content-Type: $contentType');
+          return null;
+        }
+      } else {
+        debugPrint('URL no accesible - Status: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error validando URL de miniatura: $e');
+      return null;
     }
   }
 
@@ -450,6 +517,7 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
               },
               errorBuilder: (context, error, stackTrace) {
                 debugPrint('Error cargando miniatura: $error');
+                debugPrint('URL problemática: $_thumbnailUrl');
                 return Container(
                   color: Colors.grey[200],
                   child: Column(
@@ -465,6 +533,30 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
                         'No se pudo cargar la miniatura',
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                         textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _thumbnailUrl = '';
+                            _isLoadingThumbnail = true;
+                          });
+                          // Reintentar obtener miniatura
+                          ThumbnailService.getBestThumbnail(
+                            widget.sharedUrl,
+                            _platform,
+                          ).then((url) {
+                            setState(() {
+                              _thumbnailUrl = url ?? '';
+                              _isLoadingThumbnail = false;
+                            });
+                          });
+                        },
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text(
+                          'Reintentar',
+                          style: TextStyle(fontSize: 10),
+                        ),
                       ),
                     ],
                   ),
@@ -524,6 +616,39 @@ class _QuickSaveModalState extends State<QuickSaveModal> {
               Text(
                 'Miniatura no disponible',
                 style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _isLoadingThumbnail = true;
+                  });
+                  // Intentar obtener miniatura nuevamente
+                  ThumbnailService.getBestThumbnail(
+                    widget.sharedUrl,
+                    _platform,
+                  ).then((url) async {
+                    if (url != null && url.isNotEmpty) {
+                      final validatedUrl = await _validateThumbnailUrl(url);
+                      setState(() {
+                        _thumbnailUrl = validatedUrl ?? '';
+                        _isLoadingThumbnail = false;
+                      });
+                    } else {
+                      setState(() {
+                        _isLoadingThumbnail = false;
+                      });
+                    }
+                  });
+                },
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text(
+                  'Intentar obtener miniatura',
+                  style: TextStyle(fontSize: 10),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: _platform.getColor(),
+                ),
               ),
             ],
           ),

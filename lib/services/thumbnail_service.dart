@@ -364,12 +364,30 @@ class ThumbnailService {
     _logThumbnailExtraction(platform.toString(), url, null);
     String? thumbnailUrl;
 
+    // Para Instagram y TikTok, usar estrategias especiales primero
+    if (platform == PlatformType.instagram) {
+      thumbnailUrl = await _getInstagramThumbnailSmart(url);
+      if (thumbnailUrl != null) {
+        _logThumbnailExtraction(platform.toString(), url, thumbnailUrl);
+        return thumbnailUrl;
+      }
+    } else if (platform == PlatformType.tiktok) {
+      thumbnailUrl = await _getTikTokThumbnailSmart(url);
+      if (thumbnailUrl != null) {
+        _logThumbnailExtraction(platform.toString(), url, thumbnailUrl);
+        return thumbnailUrl;
+      }
+    }
+
     // Método 1: Usar ThumbnailService específico con timeout
     try {
       thumbnailUrl = await getThumbnailWithTimeout(url, platform);
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
-        _logThumbnailExtraction(platform.toString(), url, thumbnailUrl);
-        return thumbnailUrl;
+        final verifiedUrl = await _verifyThumbnailUrl(thumbnailUrl);
+        if (verifiedUrl != null) {
+          _logThumbnailExtraction(platform.toString(), url, verifiedUrl);
+          return verifiedUrl;
+        }
       }
     } catch (e) {
       _logThumbnailExtraction(
@@ -385,8 +403,11 @@ class ThumbnailService {
       final info = await getCompleteInfo(url, platform);
       thumbnailUrl = info?['thumbnailUrl'];
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
-        _logThumbnailExtraction(platform.toString(), url, thumbnailUrl);
-        return thumbnailUrl;
+        final verifiedUrl = await _verifyThumbnailUrl(thumbnailUrl);
+        if (verifiedUrl != null) {
+          _logThumbnailExtraction(platform.toString(), url, verifiedUrl);
+          return verifiedUrl;
+        }
       }
     } catch (e) {
       _logThumbnailExtraction(
@@ -404,8 +425,11 @@ class ThumbnailService {
         platform,
       ).timeout(_getTimeoutForPlatform(platform));
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
-        _logThumbnailExtraction(platform.toString(), url, thumbnailUrl);
-        return thumbnailUrl;
+        final verifiedUrl = await _verifyThumbnailUrl(thumbnailUrl);
+        if (verifiedUrl != null) {
+          _logThumbnailExtraction(platform.toString(), url, verifiedUrl);
+          return verifiedUrl;
+        }
       }
     } catch (e) {
       _logThumbnailExtraction(
@@ -414,6 +438,25 @@ class ThumbnailService {
         null,
         error: 'Error extracción HTML: $e',
       );
+    }
+
+    // Método 4: Intentar URLs de respaldo específicas por plataforma
+    final fallbackUrls = _getFallbackThumbnailUrls(url, platform);
+    for (final fallbackUrl in fallbackUrls) {
+      try {
+        final verifiedUrl = await _verifyThumbnailUrl(fallbackUrl);
+        if (verifiedUrl != null) {
+          _logThumbnailExtraction(
+            platform.toString(),
+            url,
+            verifiedUrl,
+            error: 'Usando URL de respaldo',
+          );
+          return verifiedUrl;
+        }
+      } catch (e) {
+        debugPrint('Error con URL de respaldo $fallbackUrl: $e');
+      }
     }
 
     _logThumbnailExtraction(platform.toString(), url, null);
@@ -471,6 +514,346 @@ class ThumbnailService {
         return const Duration(seconds: 10); // Twitter/X es variable
       default:
         return const Duration(seconds: 10); // Timeout genérico
+    }
+  }
+
+  /// Obtiene URLs de miniatura de respaldo para plataformas específicas
+  static List<String> _getFallbackThumbnailUrls(
+    String url,
+    PlatformType platform,
+  ) {
+    final fallbackUrls = <String>[];
+
+    switch (platform) {
+      case PlatformType.instagram:
+        // Para Instagram, intentar diferentes formatos de URL
+        if (url.contains('/p/')) {
+          final postId = url.split('/p/')[1].split('/')[0];
+          fallbackUrls.addAll([
+            // URLs de imagen directas más comunes
+            'https://scontent.cdninstagram.com/v/t51.2885-15/s1080x1080/$postId.jpg?stp=dst-jpg_e35&_nc_ht=scontent.cdninstagram.com',
+            'https://scontent.cdninstagram.com/v/t51.2885-15/$postId.jpg?stp=dst-jpg_e35_p1080x1080',
+            'https://instagram.com/p/$postId/media/?size=l',
+            'https://instagram.com/p/$postId/media/?size=m',
+            'https://scontent-atl3-1.cdninstagram.com/v/t51.2885-15/s1080x1080/$postId.jpg',
+            'https://scontent-lga3-1.cdninstagram.com/v/t51.2885-15/s640x640/$postId.jpg',
+          ]);
+        } else if (url.contains('/reel/')) {
+          final reelId = url.split('/reel/')[1].split('/')[0];
+          fallbackUrls.addAll([
+            'https://scontent.cdninstagram.com/v/t51.2885-15/s1080x1080/$reelId.jpg?stp=dst-jpg_e35&_nc_ht=scontent.cdninstagram.com',
+            'https://instagram.com/reel/$reelId/media/?size=l',
+            'https://instagram.com/reel/$reelId/media/?size=m',
+          ]);
+        }
+        // URLs genéricas como último recurso
+        fallbackUrls.addAll([
+          'https://static.cdninstagram.com/rsrc.php/v4/yI/r/VsNE-OHk_8a.png', // Logo oficial
+          'https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png',
+        ]);
+        break;
+
+      case PlatformType.facebook:
+        // Para Facebook, intentar diferentes API endpoints
+        if (url.contains('facebook.com')) {
+          fallbackUrls.addAll([
+            'https://graph.facebook.com/me/picture?type=large',
+            'https://external-content.duckduckgo.com/iu/?u=$url&f=1&nofb=1',
+            'https://static.xx.fbcdn.net/rsrc.php/v3/yG/r/wrCiWd_JmQD.png', // Logo FB
+          ]);
+        }
+        break;
+
+      case PlatformType.tiktok:
+        // Para TikTok, intentar diferentes CDNs y placeholders
+        if (url.contains('tiktok.com')) {
+          // Intentar extraer ID del video para construir URLs
+          final videoIdRegex = RegExp(r'/video/(\d+)');
+          final match = videoIdRegex.firstMatch(url);
+          if (match != null) {
+            final videoId = match.group(1);
+            fallbackUrls.addAll([
+              'https://p16-sign-sg.tiktokcdn.com/obj/tos-maliva-p-0068/$videoId.jpeg',
+              'https://p16-sign-va.tiktokcdn.com/obj/tos-maliva-p-0068/$videoId.jpeg',
+              'https://p16-va.tiktokcdn.com/img/tos-maliva-p-0068/$videoId~tplv-photomode-image.jpeg',
+              'https://p77-va.tiktokcdn.com/img/tos-maliva-p-0068/$videoId~tplv-photomode-image.jpeg',
+              'https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok/webapp/main/webapp-desktop/$videoId.jpg',
+            ]);
+          }
+          fallbackUrls.addAll([
+            'https://p16-sign-sg.tiktokcdn.com/obj/tos-maliva-p-0068/placeholder.jpg',
+            'https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok/webapp/main/webapp-desktop/placeholder.jpg',
+            'https://upload.wikimedia.org/wikipedia/en/a/a9/TikTok_logo.svg', // Logo TikTok
+          ]);
+        }
+        break;
+
+      case PlatformType.twitter:
+        // Para Twitter/X, intentar diferentes formatos
+        if (url.contains('twitter.com') || url.contains('x.com')) {
+          // Intentar extraer ID del tweet
+          final tweetIdRegex = RegExp(r'/status/(\d+)');
+          final match = tweetIdRegex.firstMatch(url);
+          if (match != null) {
+            final tweetId = match.group(1);
+            fallbackUrls.addAll([
+              'https://pbs.twimg.com/tweet_video_thumb/$tweetId.jpg',
+              'https://pbs.twimg.com/media/$tweetId.jpg',
+            ]);
+          }
+          fallbackUrls.addAll([
+            'https://abs.twimg.com/icons/apple-touch-icon-192x192.png',
+            'https://pbs.twimg.com/profile_images/placeholder.jpg',
+            'https://upload.wikimedia.org/wikipedia/commons/6/6f/Logo_of_Twitter.svg', // Logo Twitter
+          ]);
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    return fallbackUrls;
+  }
+
+  /// Método inteligente para obtener miniatura de Instagram con múltiples estrategias
+  static Future<String?> _getInstagramThumbnailSmart(String url) async {
+    debugPrint('🎯 Instagram Smart: Iniciando extracción para $url');
+
+    try {
+      // Extraer información del post
+      final postInfo = _extractInstagramPostInfo(url);
+      if (postInfo == null) {
+        debugPrint('❌ Instagram Smart: No se pudo extraer información del URL');
+        return null;
+      }
+
+      // Estrategia 1: URLs de fallback generadas basadas en el post ID
+      if (postInfo['postId']?.isNotEmpty == true) {
+        final postId = postInfo['postId']!;
+        final fallbackUrls = [
+          'https://scontent.cdninstagram.com/v/t51.2885-15/$postId.jpg?stp=dst-jpg_e35_p1080x1080&_nc_ht=scontent.cdninstagram.com',
+          'https://scontent.cdninstagram.com/v/t51.2885-15/$postId.webp?stp=dst-webp_e35_p1080x1080',
+          'https://instagram.com/p/$postId/media/?size=m',
+          'https://scontent-lga3-1.cdninstagram.com/v/t51.2885-15/$postId.jpg',
+          'https://scontent-atl3-1.cdninstagram.com/v/t51.2885-15/s640x640/$postId.jpg',
+        ];
+
+        for (final fallbackUrl in fallbackUrls) {
+          final verifiedUrl = await _verifyThumbnailUrl(fallbackUrl);
+          if (verifiedUrl != null) {
+            debugPrint(
+              '✅ Instagram Smart: URL de fallback exitosa: $verifiedUrl',
+            );
+            return verifiedUrl;
+          }
+        }
+      }
+
+      // Estrategia 2: Acceso directo con headers rotativos
+      final userAgents = [
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ];
+
+      for (final userAgent in userAgents) {
+        try {
+          final headers = {
+            'User-Agent': userAgent,
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
+            'Referer': 'https://www.google.com/',
+            'Cache-Control': 'max-age=0',
+          };
+
+          final response = await http
+              .get(Uri.parse(url), headers: headers)
+              .timeout(const Duration(seconds: 10));
+
+          if (response.statusCode == 200) {
+            final thumbnailUrls = _extractThumbnailUrls(
+              response.body,
+              PlatformType.instagram,
+            );
+            for (final thumbnailUrl in thumbnailUrls) {
+              final verifiedUrl = await _verifyThumbnailUrl(thumbnailUrl);
+              if (verifiedUrl != null) {
+                debugPrint(
+                  '✅ Instagram Smart: Extracción HTML exitosa: $verifiedUrl',
+                );
+                return verifiedUrl;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Instagram Smart: Error con User-Agent $userAgent: $e');
+          continue;
+        }
+      }
+
+      debugPrint('❌ Instagram Smart: Todas las estrategias fallaron');
+      return null;
+    } catch (e) {
+      debugPrint('❌ Instagram Smart: Error general: $e');
+      return null;
+    }
+  }
+
+  /// Método inteligente para obtener miniatura de TikTok con estrategias CDN
+  static Future<String?> _getTikTokThumbnailSmart(String url) async {
+    debugPrint('🎯 TikTok Smart: Iniciando extracción para $url');
+
+    try {
+      // Extraer información del video
+      final videoInfo = _extractTikTokVideoInfo(url);
+      if (videoInfo == null) {
+        debugPrint('❌ TikTok Smart: No se pudo extraer información del URL');
+        return null;
+      }
+
+      // Estrategia 1: URLs de CDN basadas en el video ID
+      if (videoInfo['videoId']?.isNotEmpty == true) {
+        final videoId = videoInfo['videoId']!;
+        final cdnUrls = [
+          'https://p16-sign-sg.tiktokcdn.com/obj/tos-maliva-p-0068/$videoId.jpeg',
+          'https://p16-sign-va.tiktokcdn.com/obj/tos-maliva-p-0068/$videoId.jpeg',
+          'https://p16-va.tiktokcdn.com/img/tos-maliva-p-0068/$videoId~tplv-photomode-image.jpeg',
+          'https://p77-va.tiktokcdn.com/img/tos-maliva-p-0068/$videoId~tplv-photomode-image.jpeg',
+          'https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok/webapp/main/webapp-desktop/$videoId.jpg',
+        ];
+
+        for (final cdnUrl in cdnUrls) {
+          final verifiedUrl = await _verifyThumbnailUrl(cdnUrl);
+          if (verifiedUrl != null) {
+            debugPrint('✅ TikTok Smart: URL de CDN exitosa: $verifiedUrl');
+            return verifiedUrl;
+          }
+        }
+      }
+
+      // Estrategia 2: Acceso directo con headers específicos para TikTok
+      try {
+        final headers = {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept':
+              'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': 'https://www.tiktok.com/',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'same-origin',
+        };
+
+        final response = await http
+            .get(Uri.parse(url), headers: headers)
+            .timeout(const Duration(seconds: 12));
+
+        if (response.statusCode == 200) {
+          final thumbnailUrls = _extractThumbnailUrls(
+            response.body,
+            PlatformType.tiktok,
+          );
+          for (final thumbnailUrl in thumbnailUrls) {
+            final verifiedUrl = await _verifyThumbnailUrl(thumbnailUrl);
+            if (verifiedUrl != null) {
+              debugPrint(
+                '✅ TikTok Smart: Extracción HTML exitosa: $verifiedUrl',
+              );
+              return verifiedUrl;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ TikTok Smart: Error en acceso directo: $e');
+      }
+
+      // Estrategia 3: URLs genéricas de placeholder
+      final placeholderUrls = [
+        'https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok/webapp/main/webapp-desktop/placeholder.jpg',
+        'https://p16-sign-sg.tiktokcdn.com/obj/tos-maliva-p-0068/placeholder.jpg',
+      ];
+
+      for (final placeholderUrl in placeholderUrls) {
+        final verifiedUrl = await _verifyThumbnailUrl(placeholderUrl);
+        if (verifiedUrl != null) {
+          debugPrint(
+            '✅ TikTok Smart: URL de placeholder exitosa: $verifiedUrl',
+          );
+          return verifiedUrl;
+        }
+      }
+
+      debugPrint('❌ TikTok Smart: Todas las estrategias fallaron');
+      return null;
+    } catch (e) {
+      debugPrint('❌ TikTok Smart: Error general: $e');
+      return null;
+    }
+  }
+
+  /// Extrae información básica del post de Instagram
+  static Map<String, String>? _extractInstagramPostInfo(String url) {
+    try {
+      final Uri uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+      String? postId;
+      String? username;
+      bool isReel = false;
+
+      if (pathSegments.contains('p') &&
+          pathSegments.length > pathSegments.indexOf('p') + 1) {
+        int pIndex = pathSegments.indexOf('p');
+        postId = pathSegments[pIndex + 1];
+        if (pIndex > 0) username = pathSegments[0];
+      } else if (pathSegments.contains('reel') &&
+          pathSegments.length > pathSegments.indexOf('reel') + 1) {
+        int reelIndex = pathSegments.indexOf('reel');
+        postId = pathSegments[reelIndex + 1];
+        isReel = true;
+        if (reelIndex > 0) username = pathSegments[0];
+      } else if (pathSegments.isNotEmpty) {
+        username = pathSegments[0];
+      }
+
+      return {
+        'postId': postId ?? '',
+        'username': username ?? '',
+        'isReel': isReel.toString(),
+        'url': url,
+      };
+    } catch (e) {
+      debugPrint('Error extrayendo información de Instagram: $e');
+      return null;
+    }
+  }
+
+  /// Extrae información básica del video de TikTok
+  static Map<String, String>? _extractTikTokVideoInfo(String url) {
+    try {
+      final Uri uri = Uri.parse(url);
+      String? videoId;
+      String? username;
+
+      // Extraer ID del video desde diferentes formatos de URL
+      final videoIdRegex = RegExp(r'/video/(\d+)');
+      final match = videoIdRegex.firstMatch(url);
+      if (match != null) {
+        videoId = match.group(1);
+      }
+
+      // Extraer username si está en la URL
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty && pathSegments[0].startsWith('@')) {
+        username = pathSegments[0].substring(1); // Remover @
+      }
+
+      return {'videoId': videoId ?? '', 'username': username ?? '', 'url': url};
+    } catch (e) {
+      debugPrint('Error extrayendo información de TikTok: $e');
+      return null;
     }
   }
 }
