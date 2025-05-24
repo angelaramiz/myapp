@@ -1,0 +1,519 @@
+import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+import '../models/folder.dart';
+import '../models/video_link.dart';
+import '../screens/share_receiver_screen.dart';
+import '../services/data_service.dart';
+import '../services/url_service.dart';
+
+class QuickSaveModal extends StatefulWidget {
+  final String sharedUrl;
+
+  const QuickSaveModal({super.key, required this.sharedUrl});
+
+  @override
+  State<QuickSaveModal> createState() => _QuickSaveModalState();
+}
+
+class _QuickSaveModalState extends State<QuickSaveModal> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _dataService = DataService();
+  final _urlService = UrlService();
+
+  String _thumbnailUrl = '';
+  PlatformType _platform = PlatformType.other;
+  List<Folder> _folders = [];
+  Folder? _selectedFolder;
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isUrlValid = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFolders();
+    _processSharedUrl();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFolders() async {
+    final List<Folder> folders = await _dataService.getFolders();
+    setState(() {
+      _folders = folders;
+      if (_folders.isNotEmpty) {
+        _selectedFolder = _folders.first;
+      }
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _processSharedUrl() async {
+    final url = widget.sharedUrl;
+
+    // Detectar plataforma
+    final platform = _urlService.detectPlatform(url);
+    setState(() {
+      _platform = platform;
+    });
+
+    // Obtener información según la plataforma
+    if (platform == PlatformType.youtube) {
+      final youtubeInfo = await _urlService.getYouTubeInfo(url);
+      if (youtubeInfo != null) {
+        setState(() {
+          _thumbnailUrl = youtubeInfo['thumbnailUrl'] ?? '';
+          if (youtubeInfo['title']?.isNotEmpty == true) {
+            _titleController.text = youtubeInfo['title'] ?? '';
+          } else {
+            _titleController.text = 'Video de YouTube';
+          }
+          _isUrlValid = true;
+        });
+      } else {
+        _titleController.text = 'Video de YouTube';
+        _isUrlValid = true;
+      }
+    } else {
+      // Para otras plataformas
+      final extractedTitle = _urlService.extractTitleFromUrl(url, platform);
+      if (extractedTitle != null) {
+        _titleController.text = extractedTitle;
+      } else {
+        // Título genérico basado en la plataforma
+        switch (platform) {
+          case PlatformType.facebook:
+            _titleController.text = 'Video de Facebook';
+            break;
+          case PlatformType.instagram:
+            _titleController.text = 'Post de Instagram';
+            break;
+          case PlatformType.tiktok:
+            _titleController.text = 'Video de TikTok';
+            break;
+          case PlatformType.twitter:
+            _titleController.text = 'Tweet';
+            break;
+          default:
+            _titleController.text = 'Contenido compartido';
+            break;
+        }
+      }
+
+      // Lógica para obtener miniatura y título para otras plataformas
+      final otherPlatformInfo = await _urlService.getOtherPlatformInfo(
+        url,
+        platform,
+      );
+      if (otherPlatformInfo != null) {
+        setState(() {
+          _thumbnailUrl = otherPlatformInfo['thumbnailUrl'] ?? '';
+          _isUrlValid = true;
+
+          // Si hay un título disponible y el campo está vacío, lo completamos automáticamente
+          if (otherPlatformInfo['title']?.isNotEmpty == true &&
+              _titleController.text.isEmpty) {
+            _titleController.text = otherPlatformInfo['title'] ?? '';
+          }
+        });
+      } else {
+        setState(() {
+          _isUrlValid = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveVideo() async {
+    if (!_formKey.currentState!.validate() || _selectedFolder == null) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final videoLink = VideoLink(
+        id: const Uuid().v4(),
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        url: widget.sharedUrl.trim(),
+        thumbnailUrl: _thumbnailUrl,
+        platform: _platform,
+        createdAt: DateTime.now(),
+        reminder: null, // Sin recordatorio por defecto desde compartido
+        folderId: _selectedFolder!.id,
+      );
+
+      await _dataService.saveVideoLink(videoLink);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Video guardado exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al guardar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+            ),
+            child: Column(
+              children: [
+                // Handle para arrastrar
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Título del modal
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.share, color: Theme.of(context).primaryColor),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Guardar contenido compartido',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Botón para abrir pantalla completa
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => ShareReceiverScreen(
+                                sharedUrl: widget.sharedUrl,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.open_in_full),
+                        tooltip: 'Abrir en pantalla completa',
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Contenido del modal
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : SingleChildScrollView(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // URL y plataforma
+                                _buildUrlInfoCard(),
+                                const SizedBox(height: 16),
+
+                                // Miniatura si está disponible
+                                if (_thumbnailUrl.isNotEmpty)
+                                  _buildThumbnailCard(),
+                                if (_thumbnailUrl.isNotEmpty)
+                                  const SizedBox(height: 16),
+
+                                // Campo de título
+                                _buildTitleField(),
+                                const SizedBox(height: 16),
+
+                                // Campo de descripción
+                                _buildDescriptionField(),
+                                const SizedBox(height: 16),
+
+                                // Selector de carpeta
+                                _buildFolderSelector(),
+                                const SizedBox(height: 24),
+                              ],
+                            ),
+                          ),
+                        ),
+                ),
+
+                // Botones de acción
+                _buildActionButtons(),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildUrlInfoCard() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  _platform.getIcon(),
+                  color: _platform.getColor(),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _platform.getName(),
+                  style: TextStyle(
+                    color: _platform.getColor(),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.sharedUrl,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailCard() {
+    return Card(
+      elevation: 2,
+      clipBehavior: Clip.antiAlias,
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Image.network(
+          _thumbnailUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[200],
+              child: const Icon(
+                Icons.image_not_supported,
+                size: 50,
+                color: Colors.grey,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTitleField() {
+    return TextFormField(
+      controller: _titleController,
+      decoration: const InputDecoration(
+        labelText: 'Título',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.title),
+      ),
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return 'El título es requerido';
+        }
+        return null;
+      },
+      maxLines: 2,
+      textCapitalization: TextCapitalization.sentences,
+    );
+  }
+
+  Widget _buildDescriptionField() {
+    return TextFormField(
+      controller: _descriptionController,
+      decoration: const InputDecoration(
+        labelText: 'Descripción (opcional)',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.description),
+      ),
+      maxLines: 3,
+      textCapitalization: TextCapitalization.sentences,
+    );
+  }
+
+  Widget _buildFolderSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Seleccionar carpeta:',
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        if (_folders.isEmpty)
+          Card(
+            color: Colors.orange[50],
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'No hay carpetas disponibles. Crea una carpeta primero.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 100,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _folders.length,
+              itemBuilder: (context, index) {
+                final folder = _folders[index];
+                final isSelected = _selectedFolder?.id == folder.id;
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedFolder = folder;
+                    });
+                  },
+                  child: Container(
+                    width: 100,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.folder,
+                          size: 32,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey[500],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          folder.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(top: BorderSide(color: Colors.grey[300]!, width: 1)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 2,
+            child: ElevatedButton(
+              onPressed: _isSaving || _folders.isEmpty || !_isUrlValid
+                  ? null
+                  : _saveVideo,
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Guardar video'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

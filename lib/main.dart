@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'screens/folder_list_screen.dart';
-import 'screens/share_receiver_screen.dart';
+import 'widgets/quick_save_modal.dart';
 import 'services/notification_service_simple.dart';
 import 'services/share_intent_service.dart';
 
@@ -28,6 +28,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late final StreamSubscription<String> _sharedTextSub;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -36,7 +37,15 @@ class _MyAppState extends State<MyApp> {
     // Suscribirnos a nuevos enlaces compartidos
     _sharedTextSub = ShareIntentService.instance.sharedUrlStream.listen((url) {
       if (url.isNotEmpty) {
-        _navigateToShareReceiverScreen(url);
+        _showQuickSaveModal(url);
+      }
+    });
+
+    // Si la app se abrió con un enlace inicial, mostrarlo después de que se construya
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialSharedUrl != null &&
+          widget.initialSharedUrl!.isNotEmpty) {
+        _showQuickSaveModal(widget.initialSharedUrl!);
       }
     });
   }
@@ -47,12 +56,14 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
-  void _navigateToShareReceiverScreen(String url) {
-    if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => ShareReceiverScreen(sharedUrl: url),
-        ),
+  void _showQuickSaveModal(String url) {
+    final context = _navigatorKey.currentContext;
+    if (context != null) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => QuickSaveModal(sharedUrl: url),
       );
     }
   }
@@ -62,6 +73,7 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'Mi Biblioteca de Videos',
       debugShowCheckedModeBanner: false,
+      navigatorKey: _navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.indigo,
@@ -77,10 +89,7 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       themeMode: ThemeMode.system,
-      home:
-          widget.initialSharedUrl != null && widget.initialSharedUrl!.isNotEmpty
-          ? ShareReceiverScreen(sharedUrl: widget.initialSharedUrl!)
-          : const FolderListScreen(),
+      home: const FolderListScreen(),
     );
   }
 }
